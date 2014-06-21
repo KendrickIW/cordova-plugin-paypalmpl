@@ -123,6 +123,26 @@ mplExport.setPaymentInfo = function(arg, successCallback, failureCallback) {
 };
 
 /**
+ * setAdvancePaymentInfo
+ *
+ * @param {!Object} arg The arguments used to set advance payment info.
+ *
+ *    { 
+ *    }
+ *
+ * @param {function()} successCallback The function to call if an ad was
+ *        requested successfully.
+ * @param {function()} failureCallback The function to call if an ad failed
+ *        to be requested.
+ *
+ */
+
+mplExport.setAdvancePaymentInfo = function(arg, successCallback, failureCallback) {
+  cordova.exec(successCallback, failureCallback,
+      'PayPalMPL', 'setAdvancePaymentInfo', [ arg ]);
+};
+
+/**
  * pay.
  * 
  * @param {json} arg Json object reserved.
@@ -134,6 +154,20 @@ mplExport.setPaymentInfo = function(arg, successCallback, failureCallback) {
 mplExport.pay = function(arg, successCallback, failureCallback) {
 	cordova.exec(successCallback, failureCallback, 
 			'PayPalMPL', 'pay', [ arg ]);
+};
+
+/**
+ * advancedPay.
+ * 
+ * @param {json} arg Json object reserved.
+ * @param {function()} successCallback The function to call if an ad was
+ *        requested successfully.
+ * @param {function()} failureCallback The function to call if an ad failed
+ *        to be requested.
+ */
+mplExport.advancedPay = function(arg, successCallback, failureCallback) {
+	cordova.exec(successCallback, failureCallback, 
+			'PayPalMPL', 'advancedPay', [ arg ]);
 };
 
 module.exports = mplExport;
