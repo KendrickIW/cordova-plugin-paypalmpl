@@ -253,9 +253,9 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
     int nButton = PayPal.BUTTON_152x33;
     boolean bHideButton = false;
 
-    PayPalReceiverDetails redberrry_receiver, seller_receiver;
-    redberrry_receiver = new PayPalReceiverDetails();
-    seller_receiver = new PayPalReceiverDetails();
+    PayPalReceiverDetails primaryReceiver, secondaryReceiver;
+    primaryReceiver = new PayPalReceiverDetails();
+    secondaryReceiver = new PayPalReceiverDetails();
 
     this.advPayment = new PayPalAdvancedPayment();
 
@@ -274,8 +274,14 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 
       this.advPayment.setCurrencyType(args.getString("paymentCurrency"));
       this.advPayment.setMerchantName(args.getString("merchantName"));
-      BigDecimal amount = new BigDecimal(args.getString("subTotal"));
-      amount.round(new MathContext(2, RoundingMode.HALF_UP));
+      BigDecimal subtotal = new BigDecimal(args.getString("subTotal"));
+      BigDecimal primaryPercentage = new BigDecimal(args.getString("primaryPercentage"));
+      BigDecimal secondaryPercentage = new BigDecimal(args.getString("secondaryPercentage"));
+      subtotal.round(new MathContext(2, RoundingMode.HALF_UP));
+      primaryReceiver.setRecipient( args.getString("primaryReceiver") );
+      primaryReceiver.setSubtotal( subtotal.multiply( primaryPercentage ));
+      secondaryReceiver.setRecipient( args.getString("secondaryReceiver") );
+      secondaryReceiver.setSubtotal( subtotal.multiply( secondaryPercentage ) );
 
     } catch (JSONException e) {
       Log.d(LOGTAG, "Got JSON Exception "+ e.getMessage());
