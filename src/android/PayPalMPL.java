@@ -258,7 +258,6 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
     seller_receiver = new PayPalReceiverDetails();
 
     this.advPayment = new PayPalAdvancedPayment();
-    this.advPayment.setPaymentType( this.pType );
 
     try {
 
@@ -274,11 +273,9 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
       }
 
       this.advPayment.setCurrencyType(args.getString("paymentCurrency"));
-      this.advPayment.setDescription(args.getString("description"));
       this.advPayment.setMerchantName(args.getString("merchantName"));
       BigDecimal amount = new BigDecimal(args.getString("subTotal"));
       amount.round(new MathContext(2, RoundingMode.HALF_UP));
-      this.advPayment.setSubtotal(amount);
 
     } catch (JSONException e) {
       Log.d(LOGTAG, "Got JSON Exception "+ e.getMessage());
