@@ -254,8 +254,8 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
     boolean bHideButton = false;
 
     PayPalReceiverDetails redberrry_receiver, seller_receiver;
-    redberrry_receiver = new PayPalReceiverDetails;
-    seller_receiver = new PayPalReceiverDetails;
+    redberrry_receiver = new PayPalReceiverDetails();
+    seller_receiver = new PayPalReceiverDetails();
 
     this.advPayment = new PayPalAdvancedPayment();
     this.advPayment.setPaymentType( this.pType );
