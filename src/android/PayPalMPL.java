@@ -68,40 +68,45 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 	@Override
 	public boolean execute(String action, final JSONArray inputs, final CallbackContext callbackContext) throws JSONException {
 		Log.d(LOGTAG, "Plugin Called: " + action);
-		
+	
 		if (ACTION_INIT_WITH_APP_ID.equals(action)) {
 			thisPlugin = this;
 			
 			cordova.getThreadPool().execute(new Runnable() {
-	            public void run() {
-	            	executeInitWithAppID(inputs, callbackContext);
-	            }
-	        });
-			return true;
+        public void run() {
+          executeInitWithAppID(inputs, callbackContext);
+        }
+      });
+			
+      return true;
 			
 		} else if (ACTION_GET_STATUS.equals(action)) {
 			executeGetStatus(inputs, callbackContext);
 			
 		} else if (ACTION_SET_PAYMENT_INFO.equals(action)) {
 			cordova.getActivity().runOnUiThread(new Runnable() {
-	            public void run() {
-	            	executeSetPaymentInfo(inputs, callbackContext);
-	            }
-			});
-			return true;
+        public void run() {
+          executeSetPaymentInfo(inputs, callbackContext);
+        }
+      });
+			
+      return true;
+    
     } else if (ACTION_SET_ADVANCE_PAYMENT_INFO.equals(action)) {
       cordova.getActivity().runOnUiThread(new Runnable() {
         public void run() {
           executeSetAdvancePaymentInfo(inputs, callbackContext);
         }
       });
+      
       return true;
-		} else if (ACTION_PAY.equals(action)) {
+		
+    } else if (ACTION_PAY.equals(action)) {
 			cordova.getActivity().runOnUiThread(new Runnable() {
-	            public void run() {
-	    			executePay(inputs, callbackContext );
-	            }
-	        });
+        public void run() {
+          executePay(inputs, callbackContext );
+        }
+      });
 			return true;
 			
 		} else if (ACTION_ADVANCED_PAY.equals(action)) {
@@ -110,6 +115,8 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
           executeAdvancedPay(inputs, callbackContext );
         }
       });
+
+      return true;
     }
 
 		return false;
@@ -279,9 +286,12 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
       BigDecimal secondaryPercentage = new BigDecimal(args.getString("secondaryPercentage"));
       subtotal.round(new MathContext(2, RoundingMode.HALF_UP));
       primaryReceiver.setRecipient( args.getString("primaryReceiver") );
-      primaryReceiver.setSubtotal( subtotal.multiply( primaryPercentage ));
+      primaryReceiver.setSubtotal( subtotal );
+      primaryReceiver.setIsPrimary( true );
       secondaryReceiver.setRecipient( args.getString("secondaryReceiver") );
       secondaryReceiver.setSubtotal( subtotal.multiply( secondaryPercentage ) );
+      advPayment.getReceivers().add(primaryReceiver);
+      advPayment.getReceivers().add(secondaryReceiver);
 
     } catch (JSONException e) {
       Log.d(LOGTAG, "Got JSON Exception "+ e.getMessage());
@@ -301,8 +311,8 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 
     PayPal pp = PayPal.getInstance();
     pp.setLanguage( strLang );
-    pp.setShippingEnabled(false);
-    pp.setFeesPayer(PayPal.FEEPAYER_EACHRECEIVER);
+    pp.setShippingEnabled(true);
+    pp.setFeesPayer(PayPal.FEEPAYER_PRIMARYRECEIVER);
     pp.setDynamicAmountCalculationEnabled(false);
 
     if( this.ppButton != null ) {
