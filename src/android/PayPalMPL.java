@@ -10,6 +10,8 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 
+import java.util.ArrayList;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.PluginResult;
@@ -107,6 +109,7 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
           executePay(inputs, callbackContext );
         }
       });
+
 			return true;
 			
 		} else if (ACTION_ADVANCED_PAY.equals(action)) {
@@ -249,20 +252,36 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 		return true;
 	}
 
+  private ArrayList<PayPalReceiverDetails> parseReceivers(JSONArray args) throws JSONException {
+    ArrayList<PayPalReceiverDetails> receivers = new ArrayList<PayPalReceiverDetails>();
+    Integer count = 0;
+    JSONObject nextReceiver = null;
+
+    while( args.optJSONObject(count) != null ) {
+      nextReceiver = args.getJSONObject(count);
+
+      PayPalReceiverDetails receiver = new PayPalReceiverDetails();
+      BigDecimal subtotal = new BigDecimal( nextReceiver.getString("subTotal") );
+      subtotal.round(new MathContext(2, RoundingMode.HALF_UP));
+      
+      receiver.setRecipient( nextReceiver.getString("recipient") );
+      receiver.setSubtotal( subtotal );
+      receiver.setIsPrimary( nextReceiver.optBoolean("primary", false) ); 
+
+      // Add support for the other optional methods
+
+      receivers.add( receiver );
+      count++;
+    }
+
+    return(receivers);
+  }
+
   private boolean executeSetAdvancePaymentInfo(JSONArray inputs, CallbackContext callbackContext) {
 
     Log.d(LOGTAG, "Entered SetAdvancePaymentInfo" );
 
     JSONObject args = null;
-
-    String strType = "TYPE_GOODS";
-    String strLang = "en_US";
-    int nButton = PayPal.BUTTON_152x33;
-    boolean bHideButton = false;
-
-    PayPalReceiverDetails primaryReceiver, secondaryReceiver;
-    primaryReceiver = new PayPalReceiverDetails();
-    secondaryReceiver = new PayPalReceiverDetails();
 
     this.advPayment = new PayPalAdvancedPayment();
 
@@ -270,28 +289,17 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 
       args = inputs.getJSONObject(0);
 
-      strLang = args.getString("lang");
-      strType = args.getString("paymentType");
-      nButton = args.getInt("showPayPalButton");
-
-      if( nButton < PayPal.BUTTON_152x33 || nButton > PayPal.BUTTON_294x45 ) {
-        nButton = PayPal.BUTTON_152x33;
-        bHideButton = true;
-      }
+      setOptions(args);
+      generateButton( args.getInt("showPayPalButton") );
 
       this.advPayment.setCurrencyType(args.getString("paymentCurrency"));
       this.advPayment.setMerchantName(args.getString("merchantName"));
-      BigDecimal subtotal = new BigDecimal(args.getString("subTotal"));
-      BigDecimal primaryPercentage = new BigDecimal(args.getString("primaryPercentage"));
-      BigDecimal secondaryPercentage = new BigDecimal(args.getString("secondaryPercentage"));
-      subtotal.round(new MathContext(2, RoundingMode.HALF_UP));
-      primaryReceiver.setRecipient( args.getString("primaryReceiver") );
-      primaryReceiver.setSubtotal( subtotal );
-      primaryReceiver.setIsPrimary( true );
-      secondaryReceiver.setRecipient( args.getString("secondaryReceiver") );
-      secondaryReceiver.setSubtotal( subtotal.multiply( secondaryPercentage ) );
-      advPayment.getReceivers().add(primaryReceiver);
-      advPayment.getReceivers().add(secondaryReceiver);
+
+      ArrayList<PayPalReceiverDetails> receivers = parseReceivers( args.getJSONArray("receivers") );
+      if( receivers.isEmpty() == false ) {
+        this.advPayment.setReceivers( receivers );
+      }
+
 
     } catch (JSONException e) {
       Log.d(LOGTAG, "Got JSON Exception "+ e.getMessage());
@@ -299,22 +307,40 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
       return true;
     }
 
-    if( strType.equals("TYPE_GOODS") ) {
-      this.pType = PayPal.PAYMENT_TYPE_GOODS;
-    } else if( strType.equals("TYPE_SERVICE") ) {
-      this.pType = PayPal.PAYMENT_TYPE_SERVICE;
-    } else if( strType.equals("TYPE_PERSONAL") ) {
-      this.pType = PayPal.PAYMENT_TYPE_PERSONAL;
-    } else {
-      this.pType = PayPal.PAYMENT_TYPE_NONE;
+    callbackContext.sendPluginResult( new PluginResult(Status.OK) );
+
+    return true;
+  }
+
+  private void setOptions(JSONObject args) throws JSONException {
+    PayPal pp = PayPal.getInstance();
+    pp.setLanguage( args.optString("lang", "en_US") );
+    pp.setShippingEnabled( args.optBoolean("shippingEnabled", false) );
+
+    String feePayer = args.optString("feePayer", "EACHRECEIVER");
+
+    if( feePayer.equals("PRIMARYRECEIVER") ) {
+      pp.setFeesPayer(PayPal.FEEPAYER_PRIMARYRECEIVER);
+    } else if ( feePayer.equals("EACHRECEIVER") ) {
+      pp.setFeesPayer(PayPal.FEEPAYER_EACHRECEIVER);
+    } else if ( feePayer.equals("SENDER") ) {
+      pp.setFeesPayer(PayPal.FEEPAYER_SENDER);
+    } else if ( feePayer.equals("SECONDARYONLY") ) {
+      pp.setFeesPayer(PayPal.FEEPAYER_SECONDARYONLY);
     }
 
-    PayPal pp = PayPal.getInstance();
-    pp.setLanguage( strLang );
-    pp.setShippingEnabled(true);
-    pp.setFeesPayer(PayPal.FEEPAYER_PRIMARYRECEIVER);
-    pp.setDynamicAmountCalculationEnabled(false);
+    pp.setDynamicAmountCalculationEnabled(args.optBoolean("dynamicAmountEnabled", false));
+  }
 
+  private void generateButton(int nButton) {
+
+    boolean bHideButton = false;
+
+    if( nButton < PayPal.BUTTON_152x33 || nButton > PayPal.BUTTON_294x45 ) {
+      nButton = PayPal.BUTTON_152x33;
+      bHideButton = true;
+    }
+  
     if( this.ppButton != null ) {
       webView.removeView( this.ppButton );
       this.ppButton = null;
@@ -322,7 +348,7 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
 
     // Back in the UI thread -- show the "Pay with PayPal" button
     // Generate the PayPal Checkout button and save it for later use
-    this.ppButton = pp.getCheckoutButton(this.cordova.getActivity(), nButton,
+    this.ppButton = PayPal.getInstance().getCheckoutButton(this.cordova.getActivity(), nButton,
         CheckoutButton.TEXT_PAY);
 
     // You'll need to have an OnClickListener for the CheckoutButton.
@@ -331,9 +357,6 @@ public class PayPalMPL extends CordovaPlugin implements OnClickListener {
     webView.addView( this.ppButton );
     this.ppButton.setVisibility( bHideButton ? View.INVISIBLE : View.VISIBLE );		
 
-    callbackContext.sendPluginResult( new PluginResult(Status.OK) );
-
-    return true;
   }
 
   private boolean executePay(JSONArray inputs, CallbackContext callbackContext) {
