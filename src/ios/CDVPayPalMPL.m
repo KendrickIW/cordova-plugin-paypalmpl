@@ -9,13 +9,15 @@
 
 #import "PayPal.h"
 #import "PayPalPayment.h"
+#import "PayPalAdvancedPayment.h"
 #import "PayPalInvoiceItem.h"
 #import "PayPalAddress.h" // use for dynamic amount calculation
 #import "PayPalAmounts.h" // use for dynamic amount calculation
+#import "PayPalReceiverPaymentDetails.h"
 
 @implementation CDVPayPalMPL
 
-@synthesize ppButton, ppPayment, pType, pStatus, payCallbackId;
+@synthesize ppButton, ppPayment, ppAdvancedPayment, pType, pStatus, payCallbackId;
 
 #define NO_APP_ID	@"dummy"
 
@@ -266,46 +268,204 @@
         [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
     }
     [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+
+}
+
+
+- (void) setAdvancePaymentInfo:(CDVInvokedUrlCommand *)command
+{
+  NSLog(@"PayPalMPL.setAdvancePaymentInfo - called");
+
+  CDVPluginResult *pluginResult;
+  NSString *callbackId = command.callbackId;
+  NSArray* arguments = command.arguments;
+
+  self.ppPayment = nil;
+  self.ppAdvancedPayment = nil;
+  self.ppAdvancedPayment = [[PayPalAdvancedPayment alloc] init];
+
+  NSDictionary * payinfo = nil;
+  if ([arguments objectAtIndex:PAYMENT_INFO_ARG_INDEX]) {
+        payinfo = [NSDictionary dictionaryWithDictionary:[arguments objectAtIndex:PAYMENT_INFO_ARG_INDEX]];
+  }
+
+
+
+  PayPal* pp = [PayPal getPayPalInst];
+  pp.lang = [payinfo objectForKey:@"lang"] ?: @"en_US";
+  pp.shippingEnabled = [[payinfo objectForKey:@"shippingEnabled"] ?: FALSE boolValue];
+  pp.dynamicAmountUpdateEnabled = [[payinfo objectForKey:@"dynamicAmountEnabled"] ?: NO boolValue];
+  
+  NSString *feePayer = [payinfo objectForKey:@"feePayer"] ?: @"EACHRECEIVER";
+  
+  if( [feePayer isEqualToString:@"PRIMARYRECEIVER"] ) {
+    pp.feePayer = FEEPAYER_PRIMARYRECEIVER;
+  } else if( [feePayer isEqualToString:@"EACHRECEIVER"] ) {
+    pp.feePayer = FEEPAYER_EACHRECEIVER;
+  } else if( [feePayer isEqualToString:@"SENDER"] ) {
+    pp.feePayer = FEEPAYER_SENDER;
+  } else if( [feePayer isEqualToString:@"SECONDARYONLY"] ) {
+    pp.feePayer = FEEPAYER_SECONDARYONLY;
+  }
+
+  NSInteger paymentType = TYPE_NOT_SET;
+  NSString *strPaymentType = [payinfo valueForKey:@"paymentType"];
+  if( strPaymentType ) {
+    NSLog( @"strPaymentType: %@", strPaymentType );
+    if( [strPaymentType isEqualToString:@"TYPE_GOODS"] ) {
+      paymentType = TYPE_GOODS;
+    } else if ([strPaymentType isEqualToString:@"TYPE_SERVICE"] ) {
+      paymentType = TYPE_SERVICE;
+    } else if ([strPaymentType isEqualToString:@"TYPE_PERSONAL"] ) {
+      paymentType = TYPE_PERSONAL;
+    } else {
+      paymentType = TYPE_NOT_SET;
+    }
+  }
+
+  BOOL bHideButton = NO;
+  NSInteger nPayPalButton = [[payinfo valueForKey:@"showPayPalButton"] integerValue];
+  if( nPayPalButton < BUTTON_152x33 || nPayPalButton >= BUTTON_TYPE_COUNT ) {
+    nPayPalButton = BUTTON_152x33;
+    bHideButton = YES;
+  }
+
+  if (self.ppButton != nil) {
+    [self.ppButton removeFromSuperview];
+    self.ppButton = nil;
+  }
+
+  self.ppButton = [ [PayPal getPayPalInst] getPayButtonWithTarget:self
+                                                        andAction:@selector(checkout)
+                                                    andButtonType:nPayPalButton
+                                                    andButtonText:BUTTON_TEXT_PAY ];
+  if(self.ppButton == nil) {
+    NSLog(@"ppButton = nil, failed calling getPayButtonWithTarget?");
+    return;
+  }
+
+  [super.webView addSubview:self.ppButton];
+  self.ppButton.hidden = bHideButton;
+
+  self.ppAdvancedPayment.paymentCurrency = [payinfo valueForKey:@"paymentCurrency"];
+  self.ppAdvancedPayment.merchantName = [payinfo valueForKey:@"merchantName"];
+    
+  self.ppAdvancedPayment.receiverPaymentDetails = [NSMutableArray array];
+  NSArray *receivers = [payinfo objectForKey:@"receivers"];
+
+  for (int i=0; i<[receivers count]; i++) {
+
+    PayPalReceiverPaymentDetails *details = [[PayPalReceiverPaymentDetails alloc] init];
+
+    details.recipient = [receivers[i] valueForKey:@"recipient"];
+    //details.subTotal = [receivers[i] valueForKey:@"subTotal"];
+    //NSLog(@"Subtotal: %f", details.subTotal);
+
+    NSString* amount = [receivers[i] valueForKey:@"subTotal"];
+
+    NSDecimalNumberHandler *roundPlain = [NSDecimalNumberHandler
+      decimalNumberHandlerWithRoundingMode:NSRoundPlain
+                                     scale:2
+                          raiseOnExactness:NO
+                           raiseOnOverflow:NO
+                          raiseOnUnderflow:NO
+                       raiseOnDivideByZero:YES];
+    details.subTotal = [[[NSDecimalNumber alloc] initWithFloat:[amount floatValue] ] decimalNumberByRoundingAccordingToBehavior:roundPlain ];
+    details.isPrimary = [[receivers[i] objectForKey:@"primary"] ?: NO boolValue];
+
+    if( details.isPrimary == TRUE ) NSLog(@"Primary equals true for %@", details.recipient );
+
+    [self.ppAdvancedPayment.receiverPaymentDetails addObject:details];
+  }
+  
+  pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+/*
+  if(! self.ppPayment.paymentCurrency) {
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                     messageAsString:@"CDVPayPalMPL: paymentCurrency missing"];
+  } else if(! amount) {
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                     messageAsString:@"CDVPayPalMPL: subTotal missing"];
+  } else if(! self.ppPayment.recipient ) {
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                     messageAsString:@"CDVPayPalMPL: recipient missing"];
+  } else {
+    NSDecimalNumberHandler *roundPlain = [NSDecimalNumberHandler
+      decimalNumberHandlerWithRoundingMode:NSRoundPlain
+                                     scale:2
+                          raiseOnExactness:NO
+                           raiseOnOverflow:NO
+                          raiseOnUnderflow:NO
+                       raiseOnDivideByZero:YES];
+    self.ppPayment.subTotal = [[[NSDecimalNumber alloc] initWithFloat:[amount floatValue] ] decimalNumberByRoundingAccordingToBehavior:roundPlain ];
+
+    pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+  }
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+  */
 }
 
 - (void) pay:(CDVInvokedUrlCommand *)command
 {
-    NSString *callbackId = command.callbackId;
+  NSString *callbackId = command.callbackId;
 
-    NSLog(@"PayPalMPL.pay - called");
-    
-	if (self.ppButton != nil) {
-		//[self.ppButton sendActionsForControlEvents:UIControlEventTouchUpInside];
-        payCallbackId = command.callbackId;
-        [self checkout];
-	} else {
-		NSLog( @"PayPalMPL.pay - call setPaymentInfo first" );
-        
-        NSString * msg = @"PayPalMPL.pay - call setPaymentInfo first";
-        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                          messageAsString:msg];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
-	}
+  NSLog(@"PayPalMPL.pay - called");
+
+  if (self.ppButton != nil) {
+    //[self.ppButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+    payCallbackId = command.callbackId;
+    [self checkout];
+  } else {
+    NSLog( @"PayPalMPL.pay - call setPaymentInfo first" );
+
+    NSString * msg = @"PayPalMPL.pay - call setPaymentInfo first";
+    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                      messageAsString:msg];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+  }
+}
+
+- (void) advancedPay:(CDVInvokedUrlCommand *)command
+{
+  NSLog(@"PayPalMPL.advancedPay - called");
+
+  NSString *callbackId = command.callbackId;
+
+  if (self.ppButton != nil) {
+    payCallbackId = command.callbackId;
+    [self checkout];
+  } else {
+    NSString* msg = @"PayPalMPL.advancedPay - call setAdvancedPaymentInfo first";
+
+    NSLog(@"%@", msg);
+    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                      messageAsString:msg];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:callbackId];
+  }
 }
 
 - (void) checkout
 {
-    NSLog(@"PayPalMPL.checkout - triggered");
+  NSLog(@"PayPalMPL.checkout - triggered");
 
-	if (self.ppPayment) {
-		NSLog(@"PayPalMPL.payWithPaypal - payment sent. currency:%@ amount:%@ desc:%@ recipient:%@ merchantName:%@",
-			  self.ppPayment.paymentCurrency, self.ppPayment.subTotal, self.ppPayment.description,
-			  self.ppPayment.recipient, self.ppPayment.merchantName);
+  if (self.ppPayment) {
+    NSLog(@"PayPalMPL.payWithPaypal - payment sent. currency:%@ amount:%@ desc:%@ recipient:%@ merchantName:%@",
+        self.ppPayment.paymentCurrency, self.ppPayment.subTotal, self.ppPayment.description,
+        self.ppPayment.recipient, self.ppPayment.merchantName);
 
-		[[PayPal getPayPalInst] checkoutWithPayment:self.ppPayment];
-        
-	} else {
-		NSLog(@"PayPalMPL.payWithPaypal - no payment info. call setPaymentInfo first");
-        
-        NSString * msg = @"PayPalMPL.payWithPaypal - no payment info. call setPaymentInfo first";
-        CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
-                                                          messageAsString:msg];
-        [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];	}
+    [[PayPal getPayPalInst] checkoutWithPayment:self.ppPayment];
+
+  } else if(self.ppAdvancedPayment) {
+    [[PayPal getPayPalInst] advancedCheckoutWithPayment:self.ppAdvancedPayment];
+  } else {
+    NSLog(@"PayPalMPL.payWithPaypal - no payment info. call setPaymentInfo first");
+
+    NSString * msg = @"PayPalMPL.payWithPaypal - no payment info. call setPaymentInfo first";
+    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR
+                                                      messageAsString:msg];
+    [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];	}
 }
 
 #pragma mark -
@@ -313,76 +473,76 @@
 
 - (void)paymentSuccessWithKey:(NSString *)payKey andStatus:(PayPalPaymentStatus)paymentStatus 
 {
-	NSString* jsString = 
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Success');"
-	"e.payKey = '%@';"
+  NSString* jsString = 
+    @"(function() {"
+    "var e = document.createEvent('Events');"
+    "e.initEvent('PaypalPaymentEvent.Success');"
+    "e.payKey = '%@';"
     "e.paymentStatus = %d;"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:[NSString stringWithFormat:jsString, payKey, paymentStatus]];
-	
-	NSLog(@"PayPalMPL.paymentSuccess - payKey:%@", payKey);
-    
-    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
-    
-    pStatus = PAYMENTSTATUS_SUCCESS;
+    "document.dispatchEvent(e);"
+    "})();";
+
+  [super writeJavascript:[NSString stringWithFormat:jsString, payKey, paymentStatus]];
+
+  NSLog(@"PayPalMPL.paymentSuccess - payKey:%@", payKey);
+
+  CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
+
+  pStatus = PAYMENTSTATUS_SUCCESS;
 }
 
 - (void) paymentFailedWithCorrelationID:(NSString *)correlationID
 {
-	NSString* jsString =
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Failed');"
-	"e.correlationID = '%@';"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:[NSString stringWithFormat:jsString, correlationID]];	
+  NSString* jsString =
+    @"(function() {"
+    "var e = document.createEvent('Events');"
+    "e.initEvent('PaypalPaymentEvent.Failed');"
+    "e.correlationID = '%@';"
+    "document.dispatchEvent(e);"
+    "})();";
 
-	NSLog(@"PayPalMPL.paymentFailed - correlationID:%@", correlationID);
+  [super writeJavascript:[NSString stringWithFormat:jsString, correlationID]];	
 
-    NSString *severity = [[PayPal getPayPalInst].responseMessage objectForKey:@"severity"];
-    NSLog(@"severity: %@", severity);
-    NSString *category = [[PayPal getPayPalInst].responseMessage objectForKey:@"category"];
-    NSLog(@"category: %@", category);
-    NSString *errorId = [[PayPal getPayPalInst].responseMessage objectForKey:@"errorId"];
-    NSLog(@"errorId: %@", errorId);
-    NSString *message = [[PayPal getPayPalInst].responseMessage objectForKey:@"message"];
-    NSLog(@"message: %@", message);
-    
-    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
-    
-    pStatus = PAYMENTSTATUS_FAILED;
+  NSLog(@"PayPalMPL.paymentFailed - correlationID:%@", correlationID);
+
+  NSString *severity = [[PayPal getPayPalInst].responseMessage objectForKey:@"severity"];
+  NSLog(@"severity: %@", severity);
+  NSString *category = [[PayPal getPayPalInst].responseMessage objectForKey:@"category"];
+  NSLog(@"category: %@", category);
+  NSString *errorId = [[PayPal getPayPalInst].responseMessage objectForKey:@"errorId"];
+  NSLog(@"errorId: %@", errorId);
+  NSString *message = [[PayPal getPayPalInst].responseMessage objectForKey:@"message"];
+  NSLog(@"message: %@", message);
+
+  CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR];
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
+
+  pStatus = PAYMENTSTATUS_FAILED;
 }
 
 - (void) paymentCanceled
 {
-	NSString* jsString =
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Canceled');"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:jsString];
-    
-    NSLog( @"PayPalMPL.paymentCanceled" );
-    
-    CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR];
-    [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
-    
-    pStatus = PAYMENTSTATUS_CANCELED;
+  NSString* jsString =
+    @"(function() {"
+    "var e = document.createEvent('Events');"
+    "e.initEvent('PaypalPaymentEvent.Canceled');"
+    "document.dispatchEvent(e);"
+    "})();";
+
+  [super writeJavascript:jsString];
+
+  NSLog( @"PayPalMPL.paymentCanceled" );
+
+  CDVPluginResult *pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR];
+  [self.commandDelegate sendPluginResult:pluginResult callbackId:payCallbackId];
+
+  pStatus = PAYMENTSTATUS_CANCELED;
 }
 
 - (void)paymentLibraryExit
 {
-    
+
 }
 
 @end

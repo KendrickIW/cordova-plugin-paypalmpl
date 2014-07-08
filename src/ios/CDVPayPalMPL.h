@@ -27,12 +27,14 @@ typedef enum PaymentStatuses {
 	UIButton* ppButton;
     PayPalPaymentType pType;
     PayPalPayment*  ppPayment;
+    PayPalAdvancedPayment*  ppAdvancedPayment;
     PaymentStatus pStatus;
     NSString * payCallbackId;
 }
 
 @property (nonatomic, retain) UIButton* ppButton;
 @property (nonatomic, retain) PayPalPayment*  ppPayment;
+@property (nonatomic, retain) PayPalAdvancedPayment*  ppAdvancedPayment;
 @property (nonatomic, assign) PayPalPaymentType pType;
 @property (nonatomic, assign) PaymentStatus pStatus;
 @property (nonatomic, retain) NSString * payCallbackId;
@@ -42,7 +44,9 @@ typedef enum PaymentStatuses {
 
 - (void) prepare:(CDVInvokedUrlCommand *)command;
 - (void) setPaymentInfo:(CDVInvokedUrlCommand *)command;
+- (void) setAdvancePaymentInfo:(CDVInvokedUrlCommand *)command; 
 - (void) pay:(CDVInvokedUrlCommand *)command;
+- (void) advancedPay:(CDVInvokedUrlCommand *)command;
 
 - (void) checkout;
 
