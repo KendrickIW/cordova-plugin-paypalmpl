@@ -19,7 +19,7 @@ public class PayPalMPLResultDelegate implements PayPalResultDelegate,
 	 * @param paymentStatus		the status of the transaction
 	 */
 	public void onPaymentSucceeded(String payKey, String paymentStatus) {
-		PayPalMPL.thisPlugin.onPaymentSucceeded(payKey, paymentStatus);;		
+		PayPalMPL.thisPlugin.onPaymentSucceeded(payKey, paymentStatus);
 	}
 
 	/**
