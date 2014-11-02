@@ -20,6 +20,7 @@ Check the README.md in sub folder for details.
 ## How to use it in javascript ##
 ---------------------------------
 
+```javascript
         function onDeviceReady() {
         	
             document.addEventListener('PaypalPaymentEvent.Success',function(){
@@ -72,4 +73,4 @@ Check the README.md in sub folder for details.
             	alert( 'PayPalMPL plugin not loaded.' );
             }
         }
-        
+``` 
